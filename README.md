@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Slides Voice Bot
 
-## Getting Started
+Upload any PDF, parse slide text at runtime, and present it through a session-specific VAPI assistant.
 
-First, run the development server:
+## What This Version Focuses On
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Text-only slide extraction and rendering.
+- Text-only context sent to VAPI (no image OCR, no GraphicsMagick, no ImageMagick).
+- Runtime processing: each uploaded PDF creates a fresh presentation session.
+
+## Flow Overview
+
+1. User uploads a PDF on `/`.
+2. `POST /api/process-pdf` extracts text per page with `pdfjs-dist`.
+3. Session is stored in-memory with 2-hour TTL.
+4. Server creates a VAPI assistant with slide summaries and a `navigate_to_slide` tool.
+5. User is redirected to `/present?session=...`.
+6. Slide changes from VAPI tool calls are streamed to the UI via SSE.
+
+## API Routes
+
+- `POST /api/process-pdf`
+- `GET /api/slides/[sessionId]`
+- `GET /api/slides/stream?session=<sessionId>`
+- `POST /api/vapi/create-assistant`
+- `POST /api/vapi/tool-call`
+
+## Environment Variables
+
+Create `.env.local`:
+
+```env
+VAPI_API_KEY=
+NEXT_PUBLIC_VAPI_PUBLIC_KEY=
+GROQ_API_KEY=
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Notes:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `GROQ_API_KEY` is configured in VAPI assistant settings and not called directly by this app.
+- If `VAPI_API_KEY` is missing, PDF sessions still work but voice assistant creation is skipped.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Local Development
 
-## Learn More
+```bash
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open `http://localhost:3000`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## VAPI Webhook Reachability
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+VAPI must reach `/api/vapi/tool-call` over the public internet.
 
-## Deploy on Vercel
+- Local dev: expose localhost with `ngrok` or `localtunnel` and set `NEXT_PUBLIC_APP_URL` to that public URL.
+- Production: deploy to Vercel and set `NEXT_PUBLIC_APP_URL` to your Vercel domain.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment Notes
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- No native image conversion dependencies are required.
+- Session state is in-memory, which is fine for a demo.
+- In serverless environments, memory is per instance. For production-grade persistence, move sessions to Redis or a database.

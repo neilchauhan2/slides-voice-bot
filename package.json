@@ -4,14 +4,20 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "tunnel": "npx localtunnel --port 3000",
+    "dev:tunnel": "npm run dev & npm run tunnel",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@vapi-ai/web": "^2.5.2",
+    "nanoid": "^5.1.7",
     "next": "16.2.1",
+    "pdfjs-dist": "^5.5.207",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
