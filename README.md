@@ -48,17 +48,23 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+For the voice bot to work locally, VAPI needs to reach the development server over the internet. We have included a convenient script to start both the Next.js development server and a public tunnel:
+
+```bash
+npm run dev:tunnel
+```
+
+Once the tunnel starts, copy the generated public URL (e.g., `https://<random-id>.loca.lt`) and update your `.env.local` file:
+
+```env
+NEXT_PUBLIC_APP_URL=https://<random-id>.loca.lt
+```
+
+Open `http://localhost:3000` to see the app.
 
 ## VAPI Webhook Reachability
 
 VAPI must reach `/api/vapi/tool-call` over the public internet.
 
-- Local dev: expose localhost with `ngrok` or `localtunnel` and set `NEXT_PUBLIC_APP_URL` to that public URL.
+- Local dev: The `npm run dev:tunnel` command exposes localhost with `localtunnel`. Set `NEXT_PUBLIC_APP_URL` to that public URL.
 - Production: deploy to Vercel and set `NEXT_PUBLIC_APP_URL` to your Vercel domain.
-
-## Deployment Notes
-
-- No native image conversion dependencies are required.
-- Session state is in-memory, which is fine for a demo.
-- In serverless environments, memory is per instance. For production-grade persistence, move sessions to Redis or a database.
