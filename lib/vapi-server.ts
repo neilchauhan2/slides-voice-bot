@@ -3,6 +3,49 @@ import type { SlideData } from "@/lib/types";
 const VAPI_API_BASE = "https://api.vapi.ai";
 const DEFAULT_MODEL = "openai/gpt-oss-120b";
 
+// Common words to exclude from keyword extraction
+const STOP_WORDS = new Set([
+  "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+  "of", "with", "by", "from", "as", "is", "was", "are", "were", "been",
+  "be", "have", "has", "had", "do", "does", "did", "will", "would", "could",
+  "should", "may", "might", "must", "shall", "can", "need", "dare", "ought",
+  "used", "this", "that", "these", "those", "i", "you", "he", "she", "it",
+  "we", "they", "what", "which", "who", "whom", "how", "when", "where", "why",
+  "all", "each", "every", "both", "few", "more", "most", "other", "some", "such",
+  "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very",
+  "just", "also", "now", "here", "there", "then", "once", "if", "because",
+  "about", "into", "through", "during", "before", "after", "above", "below",
+  "between", "under", "again", "further", "then", "once", "our", "your", "their",
+]);
+
+function extractKeywordsFromSlides(slides: SlideData[]): string[] {
+  const wordFrequency = new Map<string, number>();
+  
+  for (const slide of slides) {
+    const text = `${slide.title} ${slide.textContent}`.toLowerCase();
+    // Extract words that are 4+ characters
+    const words = text.match(/[a-z]{4,}/g) || [];
+    
+    for (const word of words) {
+      if (!STOP_WORDS.has(word)) {
+        wordFrequency.set(word, (wordFrequency.get(word) || 0) + 1);
+      }
+    }
+  }
+  
+  // Sort by frequency and take top keywords
+  const sorted = [...wordFrequency.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 30)
+    .map(([word]) => word);
+  
+  // Add common navigation keywords
+  return [
+    "slide", "presentation", "next", "previous", "back",
+    ...sorted,
+  ];
+}
+
 function summarizeForPrompt(slides: SlideData[]) {
   const maxChars = slides.length >= 20 ? 50 : 150;
 
@@ -62,6 +105,7 @@ export async function createAssistantForSession(input: {
 
   const deckTitle = input.slides[0]?.title || "Untitled deck";
   const systemPrompt = buildSystemPrompt(deckTitle, input.slides);
+  const keywords = extractKeywordsFromSlides(input.slides);
 
   const response = await fetch(`${VAPI_API_BASE}/assistant`, {
     method: "POST",
@@ -71,6 +115,13 @@ export async function createAssistantForSession(input: {
     },
     body: JSON.stringify({
       name: `slides-session-${input.sessionId}`,
+      transcriber: {
+        provider: "deepgram",
+        model: "nova-2",
+        language: "en",
+        smartFormat: true,
+        keywords: keywords,
+      },
       stopSpeakingPlan: {
         numWords: 0,
         voiceSeconds: 0.1,
