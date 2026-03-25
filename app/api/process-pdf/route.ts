@@ -9,7 +9,7 @@ import {
   GlobalWorkerOptions,
 } from "pdfjs-dist/legacy/build/pdf.mjs";
 
-import { setAssistantId, setSession } from "@/lib/session";
+import { getSession, setAssistantId, setSession } from "@/lib/session";
 import type { SlideData } from "@/lib/types";
 import { createAssistantForSession } from "@/lib/vapi-server";
 
@@ -69,27 +69,62 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const uploaded = formData.get("file");
+    const defaultPdf = formData.get("defaultPdf") as string | null;
 
-    if (!(uploaded instanceof File)) {
-      return NextResponse.json({ error: "Upload a PDF file" }, { status: 400 });
+    let sessionId = nanoid(10);
+    let pdfBuffer: Buffer;
+    let fileName: string = "";
+
+    if (defaultPdf) {
+      if (defaultPdf === "ml" || defaultPdf === "product_management") {
+        sessionId = `default_${defaultPdf}`;
+        fileName = `${defaultPdf}.pdf`;
+
+        // Check if session and assistant already exist and haven't expired
+        const existingSession = getSession(sessionId);
+        if (existingSession && existingSession.assistantId) {
+          return NextResponse.json({
+            sessionId,
+            slideCount: existingSession.slides.length,
+            vapiAssistantId: existingSession.assistantId,
+            assistantNote: "Loaded from cache",
+          });
+        }
+
+        pdfBuffer = await fs.readFile(
+          path.join(process.cwd(), "ppts", `${defaultPdf}.pdf`),
+        );
+      } else {
+        return NextResponse.json(
+          { error: "Invalid default PDF" },
+          { status: 400 },
+        );
+      }
+    } else {
+      if (!(uploaded instanceof File)) {
+        return NextResponse.json(
+          { error: "Upload a PDF file" },
+          { status: 400 },
+        );
+      }
+
+      fileName = uploaded.name.toLowerCase();
+      const isPdf =
+        uploaded.type === "application/pdf" || fileName.endsWith(".pdf");
+      if (!isPdf) {
+        return NextResponse.json(
+          { error: "Only .pdf files are supported" },
+          { status: 400 },
+        );
+      }
+
+      pdfBuffer = Buffer.from(await uploaded.arrayBuffer());
     }
 
-    const fileName = uploaded.name.toLowerCase();
-    const isPdf =
-      uploaded.type === "application/pdf" || fileName.endsWith(".pdf");
-    if (!isPdf) {
-      return NextResponse.json(
-        { error: "Only .pdf files are supported" },
-        { status: 400 },
-      );
-    }
-
-    const sessionId = nanoid(10);
     const baseDir = path.join(process.cwd(), "tmp", "sessions", sessionId);
     const inputPath = path.join(baseDir, "input.pdf");
 
     await fs.mkdir(baseDir, { recursive: true });
-    const pdfBuffer = Buffer.from(await uploaded.arrayBuffer());
     await fs.writeFile(inputPath, pdfBuffer);
 
     const loadingTask = getDocument({ data: new Uint8Array(pdfBuffer) });
