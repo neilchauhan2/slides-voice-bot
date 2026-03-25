@@ -480,27 +480,62 @@ export function VoiceControl({ assistantId }: VoiceControlProps) {
     await queueAutoSlideNarration(resumeIndex);
   }
 
+  async function handleExplicitSlideNavigation(slideIndex: number) {
+    // Direct client-side navigation for explicit slide requests
+    // This bypasses VAPI tool calls entirely to avoid filler phrase loops
+    const slide = slides[slideIndex];
+    if (!slide) return;
+
+    // Lock to prevent semantic navigation from overriding
+    explicitNavigationLockUntilRef.current = Date.now() + 15000;
+    
+    // Clear any pending auto-presentation state
+    awaitingAutoSlideCompletionRef.current = null;
+    accumulatedAssistantTranscriptRef.current = "";
+    
+    // Navigate immediately on client
+    setCurrentIndex(slideIndex);
+    
+    pushTranscript({
+      role: "system",
+      text: `Navigating to slide ${slideIndex + 1}...`,
+    });
+
+    // Send a direct presentation prompt to VAPI (with AUTO_PRESENT_SLIDE marker)
+    // This tells the assistant to present without calling navigate_to_slide
+    try {
+      const vapi = await getVapiClient();
+      pendingSyntheticUserFinalsRef.current += 1;
+      vapi.send({
+        type: "add-message",
+        message: {
+          role: "user",
+          content: buildAutoNarrationPrompt(slide, slides.length),
+        },
+        triggerResponseEnabled: true,
+      });
+    } catch {
+      pushTranscript({
+        role: "system",
+        text: "Failed to request slide presentation.",
+      });
+    }
+  }
+
   async function autoNavigateFromUserTranscript(text: string) {
     if (!slides.length) {
       return;
     }
 
     const explicitIndex = getExplicitSlideIndex(text, slides.length);
-    const requestId = Date.now();
-    latestNavigationRequestRef.current = requestId;
 
     if (explicitIndex !== null) {
-      awaitingAutoSlideCompletionRef.current = explicitIndex;
-      explicitNavigationLockUntilRef.current = Date.now() + 12000;
-      await triggerSlideNavigation(
-        explicitIndex,
-        "Explicit slide number request",
-        requestId,
-        "explicit",
-      );
+      // User asked to go to a specific slide - handle entirely client-side
+      await handleExplicitSlideNavigation(explicitIndex);
       return;
     }
 
+    // For other navigation commands like "next" or "previous", let VAPI handle
     if (isLikelyNavigationCommand(text)) {
       return;
     }
@@ -508,6 +543,9 @@ export function VoiceControl({ assistantId }: VoiceControlProps) {
     if (Date.now() < explicitNavigationLockUntilRef.current) {
       return;
     }
+
+    const requestId = Date.now();
+    latestNavigationRequestRef.current = requestId;
 
     const rankedIndex = rankSlideByText(text, slides);
     if (rankedIndex !== null) {
@@ -796,7 +834,16 @@ export function VoiceControl({ assistantId }: VoiceControlProps) {
             return;
           }
 
-          awaitingAutoSlideCompletionRef.current = null;
+          // Only clear auto-presentation state if user said something meaningful
+          // (more than just noise or very short utterances)
+          const normalizedText = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim();
+          const wordCount = normalizedText.split(/\s+/).filter(Boolean).length;
+          if (wordCount >= 2) {
+            // User is asking a question - clear auto-presentation state for this slide
+            awaitingAutoSlideCompletionRef.current = null;
+            accumulatedAssistantTranscriptRef.current = "";
+          }
+          
           if (assistantMutedRef.current) {
             sendAssistantControl("unmute-assistant");
             assistantMutedRef.current = false;
