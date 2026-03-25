@@ -1,7 +1,7 @@
 import type { SlideData } from "@/lib/types";
 
 const VAPI_API_BASE = "https://api.vapi.ai";
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_MODEL = "openai/gpt-oss-120b";
 
 function summarizeForPrompt(slides: SlideData[]) {
   const maxChars = slides.length >= 20 ? 50 : 150;
@@ -23,11 +23,23 @@ function buildSystemPrompt(deckTitle: string, slides: SlideData[]) {
     summarizeForPrompt(slides),
     "",
     "RULES:",
-    "- When the user asks about any topic, call navigate_to_slide with the most relevant slide index.",
+    "- For direct user requests about slides, call navigate_to_slide before giving a slide-specific answer.",
+    "- Exception: if a message contains '[AUTO_PRESENT_SLIDE]', do NOT call navigate_to_slide; just present that exact slide with a complete explanation.",
+    "- When presenting a slide, always give a complete 2-4 sentence explanation covering key points.",
+    "- Present like a confident human presenter, not like a screen reader.",
+    "- NEVER read slide text verbatim; paraphrase and explain in your own words.",
+    "- Start presenting immediately; do not say filler like 'one moment', 'hold on', or 'just a sec'.",
+    "- Do not ask for permission to continue when in presentation flow.",
+    "- If user explicitly says a slide number (e.g. 'go to slide 3'), navigate to that exact slide (user numbering starts at 1).",
+    "- If user asks a question without slide number, pick the most relevant slide by topic and navigate first.",
     "- After navigating, explain that slide's content naturally and conversationally.",
-    "- Keep responses concise: 2-4 sentences per slide explanation.",
     "- If the user says next, previous, or go back, navigate accordingly.",
+    "- For next/previous, move relative to current slide index.",
     "- For image-heavy slides with little text, explain what that slide likely covers in a real presentation.",
+    "",
+    "EXAMPLES:",
+    "- User: 'Go to slide 3' -> call navigate_to_slide with slideIndex: 2, then present slide 3.",
+    "- User: 'What are the main risks?' -> call navigate_to_slide with the most relevant slide, then answer.",
   ].join("\n");
 }
 
@@ -55,7 +67,11 @@ export async function createAssistantForSession(input: {
     },
     body: JSON.stringify({
       name: `slides-session-${input.sessionId}`,
-      firstMessage: "Ready when you are. Ask me to start presenting.",
+      stopSpeakingPlan: {
+        numWords: 0,
+        voiceSeconds: 0.1,
+        backoffSeconds: 0.35,
+      },
       model: {
         provider: "groq",
         model: DEFAULT_MODEL,
@@ -97,7 +113,14 @@ export async function createAssistantForSession(input: {
         sessionId: input.sessionId,
       },
       serverMessages: ["tool-calls"],
-      clientMessages: ["transcript", "speech-update"],
+      clientMessages: [
+        "conversation-update",
+        "transcript",
+        "speech-update",
+        "voice-input",
+        "user-interrupted",
+        "tool-calls",
+      ],
     }),
   });
 

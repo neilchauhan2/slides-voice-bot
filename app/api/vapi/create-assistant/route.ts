@@ -4,6 +4,8 @@ import { getSession, setAssistantId } from "@/lib/session";
 import { createAssistantForSession } from "@/lib/vapi-server";
 import type { SlideData } from "@/lib/types";
 
+export const runtime = "nodejs";
+
 function appUrlFromRequest(request: Request) {
   return (
     process.env.NEXT_PUBLIC_APP_URL ||

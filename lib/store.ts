@@ -22,6 +22,9 @@ type PresentationState = {
   pushTranscript: (
     message: Omit<TranscriptMessage, "id" | "createdAt">,
   ) => void;
+  upsertTranscript: (
+    message: Omit<TranscriptMessage, "createdAt"> & { createdAt?: number },
+  ) => void;
   clearTranscript: () => void;
 };
 
@@ -47,5 +50,33 @@ export const usePresentationStore = create<PresentationState>((set) => ({
         },
       ],
     })),
+  upsertTranscript: (message) =>
+    set((state) => {
+      const existingIndex = state.transcript.findIndex(
+        (entry) => entry.id === message.id,
+      );
+
+      if (existingIndex === -1) {
+        return {
+          transcript: [
+            ...state.transcript,
+            {
+              ...message,
+              createdAt: message.createdAt ?? Date.now(),
+            },
+          ],
+        };
+      }
+
+      const nextTranscript = [...state.transcript];
+      const existing = nextTranscript[existingIndex];
+      nextTranscript[existingIndex] = {
+        ...existing,
+        role: message.role,
+        text: message.text,
+      };
+
+      return { transcript: nextTranscript };
+    }),
   clearTranscript: () => set({ transcript: [] }),
 }));

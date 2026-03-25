@@ -297,6 +297,28 @@ body {
   font-family: var(--font-title), sans-serif;
 }
 
+.voice-controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+}
+
+.voice-stop {
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--rose) 45%, transparent);
+  background: color-mix(in srgb, var(--rose) 18%, transparent);
+  color: var(--ink-100);
+  padding: 0.55rem 0.9rem;
+  min-height: 56px;
+  font-family: var(--font-title), sans-serif;
+}
+
+.voice-stop:disabled,
+.voice-control:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .voice-control .dot {
   width: 10px;
   height: 10px;

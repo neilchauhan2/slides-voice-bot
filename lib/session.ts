@@ -1,10 +1,12 @@
 import { EventEmitter } from "node:events";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
 import type { SessionData } from "@/lib/types";
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
+const SESSION_FILE_NAME = "session.json";
 const sessions = new Map<string, SessionData>();
 
 const slideEvents = new EventEmitter();
@@ -48,20 +50,68 @@ async function deleteSessionAssets(sessionId: string) {
   ]);
 }
 
+function getSessionDirectory(sessionId: string) {
+  return path.join(process.cwd(), "tmp", "sessions", sessionId);
+}
+
+function getSessionFilePath(sessionId: string) {
+  return path.join(getSessionDirectory(sessionId), SESSION_FILE_NAME);
+}
+
+function persistSessionToDisk(session: SessionData) {
+  const sessionDir = getSessionDirectory(session.sessionId);
+  const sessionFile = getSessionFilePath(session.sessionId);
+
+  mkdirSync(sessionDir, { recursive: true });
+  writeFileSync(sessionFile, JSON.stringify(session), "utf8");
+}
+
+function persistSessionToDiskSafely(session: SessionData) {
+  try {
+    persistSessionToDisk(session);
+  } catch (error) {
+    console.error("Session persistence skipped:", error);
+  }
+}
+
+function hydrateSessionFromDisk(sessionId: string): SessionData | undefined {
+  const sessionFile = getSessionFilePath(sessionId);
+  if (!existsSync(sessionFile)) {
+    return undefined;
+  }
+
+  try {
+    const raw = readFileSync(sessionFile, "utf8");
+    const parsed = JSON.parse(raw) as SessionData;
+
+    if (!parsed?.sessionId || !Array.isArray(parsed.slides)) {
+      return undefined;
+    }
+
+    sessions.set(sessionId, parsed);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
 scheduleCleanup();
 
 export function setSession(
   sessionId: string,
   data: Omit<SessionData, "expiresAt">,
 ) {
-  sessions.set(sessionId, {
+  const session = {
     ...data,
     expiresAt: Date.now() + SESSION_TTL_MS,
-  });
+  };
+
+  sessions.set(sessionId, session);
+  persistSessionToDiskSafely(session);
 }
 
 export function getSession(sessionId: string): SessionData | undefined {
-  const session = sessions.get(sessionId);
+  const session = sessions.get(sessionId) ?? hydrateSessionFromDisk(sessionId);
   if (!session) {
     return undefined;
   }
@@ -83,6 +133,7 @@ export function setAssistantId(sessionId: string, assistantId: string) {
 
   session.assistantId = assistantId;
   session.expiresAt = Date.now() + SESSION_TTL_MS;
+  persistSessionToDiskSafely(session);
 }
 
 export function updateCurrentSlide(
